@@ -1,2 +1,155 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+---
+title: "Non-Parametric Homework 6"
+author: "Jack MacDonald"
+date: "4/13/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Description of Data  
+The data consists of 500 students from IL grades 9-12. The data contains information of interestering characterists of the students, including activities, habits, values/bleiefs, and mental & physical attributes. 
+```{r}
+dat <- read.csv("Desktop/ill_school_data.csv", header=TRUE)
+summary(dat)
+
+# chi square on all data, including missing
+chisq.test(dat$Handed, dat$Favorite_Season)
+
+# removing blank cells
+NAdat <- read.csv("Desktop/ill_school_data.csv", header=TRUE, na.strings = "")
+CHIdat <- subset(NAdat, select = c(Handed, Favorite_Season))
+CHIdat <- na.omit(CHIdat)
+chisq.test(CHIdat$Handed, CHIdat$Favorite_Season)
+```
+
+# Testing Handedness and Favorite Season  
+I am using a Chi-squared test because I am testing the independence of two categorical variables with a large number of observations.
+null hypothesis that handedness is independent of favorite season.  
+alternative hypothesis: there is some dependence between handedness and favoirite season.  
+
+## The Chi-squared p-value including blank values:   
+Chi-sq = 96.46, df = 12, p-value = 2.741 x 10^-15  
+With an extremely small p-value, we reject the null hypothesis.  
+There is some dependence between handedness and favorite season.  
+
+## The Chi-squared p-value after removing blank values:  
+Chi-sq = 3.7881, df = 6, p-value = 0.7053  
+With p-value > alpha level 0.05, we fail to reject the null hypothesis.  
+There is no statistically significant relationship between handedness and favorite season.   
+Handedness and Favorite season are independent.   
+I think the blanks should be removed because the observations that have blanks often have skewed/wrong information.  
+
+# CART model  
+```{r, results='hide'}
+REGdat <- subset(NAdat, select = c(Height_cm, Armspan_cm, Gender, Ageyears, Footlength_cm, Sleep_Hours_Schoolnight, Sleep_Hours_Non_Schoolnight))
+library(mice)
+set.seed(1234)
+mids<-mice(REGdat,m=5,method="cart")
+impDatList<-list()
+impDatList[[1]]<-complete(mids)
+impDatList[[2]]<-complete(mids,2)
+impDatList[[3]]<-complete(mids,3)
+impDatList[[4]]<-complete(mids,4)
+impDatList[[5]]<-complete(mids,5)
+```
+This took me a long time to figure out. I had to manually go into the data set and omit values that had the wrong information in Height, Armspan, and Sleep hours so they would not be considered categorical data.  
+The variables I considered are Height, Armspan, Gender, Ageyears, Footlength, Sleep Hours Schoolnight, and Sleep Hours Non-Schoolnight.
+```{r}
+impDatList[[1]][2,]
+impDatList[[2]][2,]
+impDatList[[3]][2,]
+impDatList[[4]][2,]
+impDatList[[5]][2,]
+summary(lm(formula=Height_cm ~ Armspan_cm + Gender + Ageyears + Footlength_cm + Sleep_Hours_Schoolnight + Sleep_Hours_Non_Schoolnight, data=as.data.frame(impDatList[[1]])))
+summary(lm(formula=Height_cm ~ Armspan_cm + Gender + Ageyears + Footlength_cm + Sleep_Hours_Schoolnight + Sleep_Hours_Non_Schoolnight, data=as.data.frame(impDatList[[2]])))
+summary(lm(formula=Height_cm ~ Armspan_cm + Gender + Ageyears + Footlength_cm + Sleep_Hours_Schoolnight + Sleep_Hours_Non_Schoolnight, data=as.data.frame(impDatList[[3]])))
+summary(lm(formula=Height_cm ~ Armspan_cm + Gender + Ageyears + Footlength_cm + Sleep_Hours_Schoolnight + Sleep_Hours_Non_Schoolnight, data=as.data.frame(impDatList[[4]])))
+summary(lm(formula=Height_cm ~ Armspan_cm + Gender + Ageyears + Footlength_cm + Sleep_Hours_Schoolnight + Sleep_Hours_Non_Schoolnight, data=as.data.frame(impDatList[[5]])))
+```
+
+## Armspan, Gender Male, and Age appear to be significant in this model at a 0.05 alpha level.  
+```{r}
+betaList<-seList<-list()
+for (i in 1:5){
+betaList[[i]]<-summary(lm(Height_cm~Armspan_cm + Gender + Ageyears,data=as.data.frame(impDatList[[i]])))$coefficients[,1]
+seList[[i]]<-summary(lm(Height_cm~Armspan_cm + Gender + Ageyears,data=as.data.frame(impDatList[[i]])))$coefficients[,2]
+}
+M<-5
+#combined estimates
+apply(do.call(rbind,betaList),2,mean)
+(B<-apply(do.call(rbind,betaList),2,var))
+(W<-apply(do.call(rbind,seList)^2,2,mean))
+T<-(1+1/M)*B + W
+#standard error
+sqrt(T)
+#missing informations
+B/(W+B)
+library(norm)
+mi.inference(betaList,seList)
+```
+
+## Combined final model  
+Height_cm = 113.0548290 + (0.3830047)Armspan_cm + (5.4084179)GenderMale -(0.8963094)Ageyears  
+ 
+## Combined standard errors:  
+(Intercept)  Armspan_cm  GenderMale    Ageyears   
+12.22278214  0.03723039  2.80339690  0.67401792    
+
+# Random Forest Model  
+```{r, results='hide'}
+library(mice)
+set.seed(1234)
+mids<-mice(REGdat,m=5,method="rf")
+impDatList<-list()
+impDatList[[1]]<-complete(mids)
+impDatList[[2]]<-complete(mids,2)
+impDatList[[3]]<-complete(mids,3)
+impDatList[[4]]<-complete(mids,4)
+impDatList[[5]]<-complete(mids,5)
+```
+```{r}
+impDatList[[1]][2,]
+impDatList[[2]][2,]
+impDatList[[3]][2,]
+impDatList[[4]][2,]
+impDatList[[5]][2,]
+summary(lm(formula=Height_cm ~ Armspan_cm + Gender + Ageyears + Footlength_cm + Sleep_Hours_Schoolnight + Sleep_Hours_Non_Schoolnight, data=as.data.frame(impDatList[[1]])))
+summary(lm(formula=Height_cm ~ Armspan_cm + Gender + Ageyears + Footlength_cm + Sleep_Hours_Schoolnight + Sleep_Hours_Non_Schoolnight, data=as.data.frame(impDatList[[2]])))
+summary(lm(formula=Height_cm ~ Armspan_cm + Gender + Ageyears + Footlength_cm + Sleep_Hours_Schoolnight + Sleep_Hours_Non_Schoolnight, data=as.data.frame(impDatList[[3]])))
+summary(lm(formula=Height_cm ~ Armspan_cm + Gender + Ageyears + Footlength_cm + Sleep_Hours_Schoolnight + Sleep_Hours_Non_Schoolnight, data=as.data.frame(impDatList[[4]])))
+summary(lm(formula=Height_cm ~ Armspan_cm + Gender + Ageyears + Footlength_cm + Sleep_Hours_Schoolnight + Sleep_Hours_Non_Schoolnight, data=as.data.frame(impDatList[[5]])))
+```
+
+## Armspan, Gender Male, and Age appear to be significant in this model at a 0.05 alpha level. Sleep hours on school night is only significant on the 4th impDatList. I will exclude it from my final model.  
+```{r}
+betaList<-seList<-list()
+for (i in 1:5){
+betaList[[i]]<-summary(lm(Height_cm~Armspan_cm + Gender + Ageyears,data=as.data.frame(impDatList[[i]])))$coefficients[,1]
+seList[[i]]<-summary(lm(Height_cm~Armspan_cm + Gender + Ageyears,data=as.data.frame(impDatList[[i]])))$coefficients[,2]
+}
+M<-5
+#combined estimates
+apply(do.call(rbind,betaList),2,mean)
+(B<-apply(do.call(rbind,betaList),2,var))
+(W<-apply(do.call(rbind,seList)^2,2,mean))
+T<-(1+1/M)*B + W
+#standard error
+sqrt(T)
+#missing informations
+B/(W+B)
+library(norm)
+mi.inference(betaList,seList)
+```
+
+## Combined final model  
+Height_cm = 108.3426709 + (0.3725761)Armspan_cm + (5.6520480)GenderMale -(0.4973007)Ageyears  
+ 
+## Combined standard errors: 
+(Intercept)  Armspan_cm  GenderMale    Ageyears   
+ 9.18754467  0.03565093  2.57471986  0.58214416  
+  
